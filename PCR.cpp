@@ -5,15 +5,24 @@
 #include <vector>
 #include <algorithm>
 #include <stdio.h>
+#include <map>
 
 using namespace std;
 
+#define INF        999999
+#define INF_NEG    -999999
+
 #define ARGS_NUM            4
 #define ENTITY_TYPES_NUM    4
+#define WIDTH               23
+#define HEIGHT              21
 
 
 enum {CMD_MOVE, CMD_FIRE, CMD_MINE, CMD_LEFT, CMD_RIGHT, CMD_FASTER, CMD_SLOWER, CMD_WAIT};
 enum {SHIP, BARREL, EXPLOSION, MINE};
+enum {SHIP_ROTATION, SHIP_SPEED, SHIP_RUM, SHIP_OWNER};
+enum {OWNER_ME, OWNER_FOE};
+
 string entity_name[ENTITY_TYPES_NUM] {"SHIP", "BARREL", "CANNONBALL", "MINE"};
 int entity_type[ENTITY_TYPES_NUM] {SHIP, BARREL, EXPLOSION, MINE};
 
@@ -135,9 +144,16 @@ private:
 ///////////////////////////////////// CWorld
 class CWorld{
 private:
+    bool firstTurn = true;
+    map <int, Entity> myShips;
+    map <int, Entity> foeShips;
+    map <int, Entity> barrels;
+    
+    void ShipInit(int myShipCount);
     void Output(vector <Order> &orders);
     Order DecisionMainSystem(int shipNum);
     Point FindClosestBarrel(int shipNum);
+    void ClearAll();
     
 public:
     CWorld() {};
@@ -150,17 +166,31 @@ void CWorld::UpdateEntity(Entity entity)
 {
     int type = -1;
     
-    for(int i = 0; i < ENTITY_TYPES_NUM; i++) {
-        if(entity.type == entity_name[i]){
-            type = i;
+    for(int currType = 0; currType < ENTITY_TYPES_NUM; currType++) {
+        if(entity.type == entity_name[currType]){
+            type = currType;
             break;
         }
     }
     
+    map <int, Entity> *container = nullptr;
+    
     switch(type){
-        case SHIP :   break;
-        default   :   break;
+        case SHIP:
+            if(entity.args[SHIP_OWNER] == OWNER_ME)
+                container = &myShips;
+            else
+                container = &foeShips;
+  
+            break;
+        case BARREL:
+            container = &barrels;
+        default:
+            break;
     }
+    
+    if(container != nullptr)
+        container->insert(pair<int, Entity> (entity.id, entity));
     
 }
 
@@ -168,21 +198,38 @@ void CWorld::UpdateEntity(Entity entity)
 void CWorld::MakeTurn(int myShipCount)
 {
     vector <Order> orders;
-        
+    
+    if(firstTurn){
+        ShipInit(myShipCount);
+        firstTurn = false;
+    }
+    
     for (int i = 0; i < myShipCount; i++) {
         orders.push_back(DecisionMainSystem(i));
         orders.back().Message(to_string(i));
     }
     
     this->Output(orders);
+    
+    ClearAll();
 }
 
+
+void CWorld::ShipInit(int myShipCount)
+{
+    
+};
 
 Order CWorld::DecisionMainSystem(int shipNum)
 {
     int shipOrder;
     
     Point shipTargetCoords = FindClosestBarrel(shipNum);
+    
+    if(shipTargetCoords.x == -1){
+        shipTargetCoords.x = rand() % WIDTH;
+        shipTargetCoords.y = rand() % HEIGHT;
+    }
     
     shipOrder = CMD_MOVE;
     
@@ -192,7 +239,28 @@ Order CWorld::DecisionMainSystem(int shipNum)
 
 Point CWorld::FindClosestBarrel(int shipNum)
 {
-    return Point(rand() % 23, rand() % 21);
+    int myX = myShips[shipNum].coords.x;
+    int myY = myShips[shipNum].coords.y;
+    int bestX = INF;
+    int bestY = INF;
+    
+    for(auto currBarrel : barrels){
+        int barX = currBarrel.second.coords.x;
+        int barY = currBarrel.second.coords.y;
+        
+        if(abs(myX - barX) + abs(myY - barY) < abs(myX - bestX) + abs(myY - bestY) )
+        {
+            bestX = barX;
+            bestY = barY;
+        }
+    }
+    
+    if(bestX == INF){
+        bestX = -1;
+        bestY = -1;
+    }
+    
+    return Point(bestX, bestY);
 }
 
 void CWorld::Output(vector <Order> &orders)
@@ -205,13 +273,21 @@ void CWorld::Output(vector <Order> &orders)
 }
 
 
+
+void CWorld::ClearAll()
+{
+    myShips.clear();
+    foeShips.clear();
+    barrels.clear();
+}
+
 ///////////////////////////////////// Main
 int main() {
     int myShipCount;
     int entityCount;
     Entity entity;
     CWorld World;
-    
+        
     srand (time(NULL));
     
     while (1) {
