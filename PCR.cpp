@@ -185,15 +185,15 @@ private:
 ///////////////////////////////////// CWorld
 class CWorld{
 private:
-    bool firstTurn = true;
     map <int, Entity> myShips;
     map <int, Entity> foeShips;
     map <int, Entity> barrels;
     
-    void ShipInit(int myShipCount) {};
     void Output(vector <Order> &orders);
     Order DecisionMainSystem(int shipNum);
     GridPoint FindClosestBarrel(int shipNum);
+    int NavigationToTarget(Entity ship, GridPoint target);
+    
     void ClearAll();
     
 public:
@@ -256,13 +256,8 @@ void CWorld::UpdateEntity(Entity entity)
 void CWorld::MakeTurn(int myShipCount)
 {
     vector <Order> orders;
-    
-    if(firstTurn){
-        ShipInit(myShipCount);
-        firstTurn = false;
-    }
-    
-    for(auto ships : myShips){
+
+    for(auto &ships : myShips){
         orders.push_back(DecisionMainSystem(ships.first));
         orders.back().Message(to_string(ships.first));
     }
@@ -284,8 +279,8 @@ Order CWorld::DecisionMainSystem(int shipNum)
         shipTargetCoords.y = rand() % HEIGHT;
     }
     
-    shipOrder = CMD_MOVE;
-    
+    shipOrder = NavigationToTarget(myShips[shipNum], shipTargetCoords);
+
     return Order(shipOrder, shipTargetCoords);
 }
 
@@ -308,6 +303,13 @@ GridPoint CWorld::FindClosestBarrel(int shipNum)
     }
 
     return bestCoords;
+}
+
+
+int CWorld::NavigationToTarget(Entity ship, GridPoint target)
+{
+    
+    return CMD_MOVE;
 }
 
 
