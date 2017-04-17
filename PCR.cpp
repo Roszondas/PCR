@@ -16,18 +16,33 @@ int main()
     int foeX[3] {-1, -1, -1};
     int foeY[3] {-1, -1, -1};
     
-    int count[3] {0, 0, 0};
+    int count[3] {-1, -1, -1};
     
+    bool firstTurn = true;
+    int maxShips;
+    int turnCount = 0;
     
     while (1) 
     {
+        turnCount++;
+        
         int myShipCount; // the number of remaining ships
         cin >> myShipCount; cin.ignore();
         int entityCount; // the number of entities (e.g. ships, mines or cannonballs)
         cin >> entityCount; cin.ignore();
-       
+        
+        if(firstTurn) 
+        {
+            maxShips = myShipCount;
+            firstTurn = false;
+        }
+           
         int X[3] {-1, -1, -1};
         int Y[3] {-1, -1, -1};
+        
+        int trX[3] {-1, -1, -1};
+        int trY[3] {-1, -1, -1};
+        
         int alive[3] {0, 0, 0};
         
         for (int i = 0; i < entityCount; i++) 
@@ -95,10 +110,24 @@ int main()
                     if(X[i] == -1) X[i] = 400;
                     if(Y[i] == -1) Y[i] = 400;
                     
-                    if(abs(myX[i] - x) + abs(myY[i] - x) < abs(myX[i] - X[i]) + abs(myY[i] - Y[i]) )
+                    if(abs(myX[i] - x) + abs(myY[i] - y) < abs(myX[i] - X[i]) + abs(myY[i] - Y[i]) )
                     {
                         X[i] = x;
                         Y[i] = y;
+                    }
+                }
+                
+                for (int i = 0; i < maxShips; i++)
+                {
+                    if(!alive[i]) continue;
+                    
+                    if(trX[i] == -1) trX[i] = 400;
+                    if(trY[i] == -1) trY[i] = 400;
+                    
+                    if(abs(foeX[i] - x) + abs(foeY[i] - y) < abs(foeX[i] - trX[i]) + abs(foeY[i] - trY[i]) )
+                    {
+                        trX[i] = x;
+                        trY[i] = y;
                     }
                 }
                 
@@ -125,7 +154,14 @@ int main()
                     cout << "MOVE " << foeX[i] << " " << foeY[i] << endl;
             }
             else
-                cout << "MOVE " << X[i] << " " << Y[i] << endl;
+            {
+                if(turnCount%2 == 0 && trX[i] > -1 && abs(myX[i] - trX[i]) + abs(myY[i] - trY[i]) < 10 && (trX[i]!=X[i] && trY[i]!=Y[i]))
+                {
+                    cout << "FIRE " << trX[i] << " " << trY[i] << endl;
+                }
+                else
+                    cout << "MOVE " << X[i] << " " << Y[i] << endl;
+            }
         }
     }
 }
