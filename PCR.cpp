@@ -21,31 +21,72 @@ using namespace std;
 enum {CMD_MOVE, CMD_FIRE, CMD_MINE, CMD_LEFT, CMD_RIGHT, CMD_FASTER, CMD_SLOWER, CMD_WAIT};
 enum {SHIP, BARREL, EXPLOSION, MINE};
 enum {SHIP_ROTATION, SHIP_SPEED, SHIP_RUM, SHIP_OWNER};
-enum {OWNER_ME, OWNER_FOE};
+enum {OWNER_FOE, OWNER_ME};
 
 string entity_name[ENTITY_TYPES_NUM] {"SHIP", "BARREL", "CANNONBALL", "MINE"};
 int entity_type[ENTITY_TYPES_NUM] {SHIP, BARREL, EXPLOSION, MINE};
 
 
-///////////////////////////////////// Point
-struct Point {
-    int x;
-    int y;
-    Point () {
+///////////////////////////////////// GridPoint / CubePoint
+struct CubePoint;
+
+struct GridPoint {
+    int x, y;
+    
+    GridPoint () {
         x = -1;
         y = -1;
     }
     
-    Point (int x, int y){
+    GridPoint (int x, int y){
         this->x = x;
         this->y = y;
     }
     
-    Point (const Point &other){
+    GridPoint (const GridPoint &other){
         this->x = other.x;
         this->y = other.y;
     }
+    
+    GridPoint (const CubePoint &cube);
 };
+
+
+
+struct CubePoint {
+    int x, y, z;
+    
+    CubePoint() {
+        x = -1;
+        y = -1;
+        z = -1;
+    }
+    
+    CubePoint (int x, int y, int z){
+        this->x = x;
+        this->y = y;
+        this->z = z;
+    }
+    
+    CubePoint (const CubePoint &other){
+        this->x = other.x;
+        this->y = other.y;
+        this->z = other.z;
+    }
+    
+    CubePoint (const GridPoint &grid){
+        this->x = grid.x - (grid.y - (grid.y&1)) / 2;
+        this->z = grid.y;
+        this->y = -x-z;
+    }
+};
+
+
+GridPoint::GridPoint (const CubePoint &cube)
+{
+        this->x = cube.x + (cube.z - (cube.z&1)) / 2;
+        this->y = cube.z;
+}
 
 
 
@@ -60,9 +101,10 @@ struct Entity : public EntityBase
 {
     int id;
     string type;
-    Point coords;
+    GridPoint coords;
     int args[ARGS_NUM];
 };
+
 
 
 ///////////////////////////////////// Order
@@ -77,7 +119,7 @@ public:
         this->y = y;
         }
     
-    Order(int cmd, Point coords) {
+    Order(int cmd, GridPoint coords) {
         this->cmd = cmd;
         this->x = coords.x;
         this->y = coords.y;
@@ -132,7 +174,6 @@ public:
         return ret;
     };
 
-
 private:
     int cmd = -1;
     int x = -1, y = -1;
@@ -149,17 +190,34 @@ private:
     map <int, Entity> foeShips;
     map <int, Entity> barrels;
     
-    void ShipInit(int myShipCount);
+    void ShipInit(int myShipCount) {};
     void Output(vector <Order> &orders);
     Order DecisionMainSystem(int shipNum);
-    Point FindClosestBarrel(int shipNum);
+    GridPoint FindClosestBarrel(int shipNum);
     void ClearAll();
     
 public:
     CWorld() {};
     void UpdateEntity(Entity entity);
     void MakeTurn(int myShipCount);
+    static int Distance(CubePoint a, CubePoint b);
+    static int Distance(GridPoint a, GridPoint b);
 };
+
+
+
+int CWorld::Distance(CubePoint a, CubePoint b)
+{
+    return (abs(a.x - b.x) + abs(a.y - b.y) + abs(a.z - b.z)) / 2;
+}
+
+
+int CWorld::Distance(GridPoint a, GridPoint b)
+{
+    CubePoint ca = a;
+    CubePoint cb = b;
+    return Distance(ca, cb);
+}
 
 
 void CWorld::UpdateEntity(Entity entity)
@@ -204,27 +262,22 @@ void CWorld::MakeTurn(int myShipCount)
         firstTurn = false;
     }
     
-    for (int i = 0; i < myShipCount; i++) {
-        orders.push_back(DecisionMainSystem(i));
-        orders.back().Message(to_string(i));
+    for(auto ships : myShips){
+        orders.push_back(DecisionMainSystem(ships.first));
+        orders.back().Message(to_string(ships.first));
     }
-    
+
     this->Output(orders);
     
     ClearAll();
 }
 
 
-void CWorld::ShipInit(int myShipCount)
-{
-    
-};
-
 Order CWorld::DecisionMainSystem(int shipNum)
 {
     int shipOrder;
     
-    Point shipTargetCoords = FindClosestBarrel(shipNum);
+    GridPoint shipTargetCoords = FindClosestBarrel(shipNum);
     
     if(shipTargetCoords.x == -1){
         shipTargetCoords.x = rand() % WIDTH;
@@ -237,41 +290,34 @@ Order CWorld::DecisionMainSystem(int shipNum)
 }
 
 
-Point CWorld::FindClosestBarrel(int shipNum)
+GridPoint CWorld::FindClosestBarrel(int shipNum)
 {
-    int myX = myShips[shipNum].coords.x;
-    int myY = myShips[shipNum].coords.y;
-    int bestX = INF;
-    int bestY = INF;
-    
+    GridPoint myCoords = myShips[shipNum].coords;
+    GridPoint bestCoords(INF, INF);
+
     for(auto currBarrel : barrels){
-        int barX = currBarrel.second.coords.x;
-        int barY = currBarrel.second.coords.y;
+        GridPoint barrelCoords = currBarrel.second.coords;
         
-        if(abs(myX - barX) + abs(myY - barY) < abs(myX - bestX) + abs(myY - bestY) )
-        {
-            bestX = barX;
-            bestY = barY;
-        }
+        if(Distance(myCoords, barrelCoords) < Distance (myCoords, bestCoords))
+            bestCoords = barrelCoords;
     }
     
-    if(bestX == INF){
-        bestX = -1;
-        bestY = -1;
+   if(bestCoords.x == INF){
+        bestCoords.x = -1;
+        bestCoords.y = -1;
     }
-    
-    return Point(bestX, bestY);
+
+    return bestCoords;
 }
+
 
 void CWorld::Output(vector <Order> &orders)
 {
-    for (auto it = orders.begin(); it < orders.end(); it++)
-    {
+    for (auto it = orders.begin(); it < orders.end(); it++)    {
         cout << it->Out();
         cout << "\n";
     }
 }
-
 
 
 void CWorld::ClearAll()
@@ -280,6 +326,8 @@ void CWorld::ClearAll()
     foeShips.clear();
     barrels.clear();
 }
+
+
 
 ///////////////////////////////////// Main
 int main() {
