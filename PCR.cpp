@@ -32,7 +32,7 @@ struct Point {
         this->y = y;
     }
     
-    Point (Point &other){
+    Point (const Point &other){
         this->x = other.x;
         this->y = other.y;
     }
@@ -68,6 +68,12 @@ public:
         this->y = y;
         }
     
+    Order(int cmd, Point coords) {
+        this->cmd = cmd;
+        this->x = coords.x;
+        this->y = coords.y;
+        }
+        
     Order(int cmd) {
         this->cmd = cmd;
     }
@@ -130,7 +136,8 @@ private:
 class CWorld{
 private:
     void Output(vector <Order> &orders);
-    void DecisionMainSystem(vector <Order> &orders);
+    Order DecisionMainSystem(int shipNum);
+    Point FindClosestBarrel(int shipNum);
     
 public:
     CWorld() {};
@@ -163,7 +170,7 @@ void CWorld::MakeTurn(int myShipCount)
     vector <Order> orders;
         
     for (int i = 0; i < myShipCount; i++) {
-        DecisionMainSystem(orders);
+        orders.push_back(DecisionMainSystem(i));
         orders.back().Message(to_string(i));
     }
     
@@ -171,17 +178,22 @@ void CWorld::MakeTurn(int myShipCount)
 }
 
 
-void CWorld::DecisionMainSystem(vector <Order> &orders)
+Order CWorld::DecisionMainSystem(int shipNum)
 {
-    int shipOrder, shipTargetX, shipTargetY;
+    int shipOrder;
+    
+    Point shipTargetCoords = FindClosestBarrel(shipNum);
     
     shipOrder = CMD_MOVE;
-    shipTargetX = rand() % 23;
-    shipTargetY = rand() % 21;
     
-    orders.push_back(Order(shipOrder, shipTargetX, shipTargetY));
+    return Order(shipOrder, shipTargetCoords);
 }
 
+
+Point CWorld::FindClosestBarrel(int shipNum)
+{
+    return Point(rand() % 23, rand() % 21);
+}
 
 void CWorld::Output(vector <Order> &orders)
 {
