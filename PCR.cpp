@@ -9,6 +9,11 @@ int main()
 {
     srand (time(NULL));
     
+        
+    int myX = -1, myY = -1;
+    int foeX = -1, foeY = -1;
+    int count = 0;
+    
     while (1) 
     {
         int myShipCount; // the number of remaining ships
@@ -17,8 +22,6 @@ int main()
         cin >> entityCount; cin.ignore();
        
         int X = -1, Y = -1;
-        
-        int myX = -1, myY = -1;
         
         for (int i = 0; i < entityCount; i++) 
         {
@@ -34,10 +37,24 @@ int main()
 
             cerr << entityId << " " << entityType << endl;
             
-            if(entityType == "SHIP" && arg4 == 1)
+            if(entityType == "SHIP")
             {
-                myX = x;
-                myY = y;
+                if(arg4 == 1)
+                {
+                    myX = x;
+                    myY = y;
+                }
+                else
+                {
+                    if(foeX == x && foeY == y)
+                        count++;
+                    else
+                        count = 0;
+                        
+                    foeX = x;
+                    foeY = y;
+                }
+                
             }
             
             if(entityType == "BARREL")
@@ -59,7 +76,15 @@ int main()
         
         for (int i = 0; i < myShipCount; i++) 
         {
-            cout << "MOVE " << X << " " << Y << endl;
+            if(count >= 2)
+            {
+                if(abs(myX - foeX) + abs(myY - foeY) < 10)
+                    cout << "FIRE " << foeX << " " << foeY << endl;
+                else
+                    cout << "MOVE " << foeX << " " << foeY << endl;
+            }
+            else
+                cout << "MOVE " << X << " " << Y << endl;
         }
     }
 }
