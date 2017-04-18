@@ -474,14 +474,16 @@ GridPoint CWorld::FindPath(Entity ship, GridPoint target)
                 
         for(int i = 0; i < 6; i++){
             
-            int newCost = curPoint.cost + 1;
+            int newCost = curPoint.cost + 2;
             if(i==curPoint.orientation)
                 newCost--;
             
             GridPoint nbrCoords = Nbrs(curPoint.coords, i);
             if(!nbrCoords.isInsideMap()) continue;
             
-            int priorityKey = Distance(ship.coords, target) - Distance(nbrCoords, target) - newCost;
+            int priorityKey = (Distance(ship.coords, target) - Distance(nbrCoords, target))*2 - newCost;
+            
+            if(nbrCoords == target) priorityKey+=5;
             
             //fprintf(stderr, "nbr %i %i pri %i\n", nbrCoords.x, nbrCoords.y, priorityKey);
             
