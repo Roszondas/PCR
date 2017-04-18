@@ -479,6 +479,11 @@ int CWorld::NavigationToTarget(Entity ship, GridPoint target)
     int destOrientation = DirectionByNeighbor(newCoords, sideCoords);
     
     if(destOrientation == ship.args[SHIP_ROTATION]){
+        // if(ship.args[SHIP_SPEED] < 2)
+        //     cmd = CMD_FASTER;
+        // else
+        //     cmd = CMD_WAIT;
+            
         if(ship.args[SHIP_SPEED])
             cmd = CMD_WAIT;
         else
@@ -495,6 +500,11 @@ int CWorld::NavigationToTarget(Entity ship, GridPoint target)
         else
             cmd = CMD_LEFT;
             
+        if(Distance(ship.coords, target) == 1 && ship.args[SHIP_SPEED] > 0)
+            cmd = CMD_SLOWER;
+        
+        if(Distance(ship.coords, target) == 2 && ship.args[SHIP_SPEED] == 2)
+            cmd = CMD_SLOWER;
     }
         
     return cmd;
