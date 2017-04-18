@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <map>
 #include <queue>
+#include <chrono>
 
 using namespace std;
 
@@ -18,6 +19,7 @@ using namespace std;
 #define WIDTH               23
 #define HEIGHT              21
 
+#define _TIMER chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now().time_since_epoch()).count()
 
 enum {CMD_MOVE, CMD_FIRE, CMD_MINE, CMD_LEFT, CMD_RIGHT, CMD_FASTER, CMD_SLOWER, CMD_WAIT};
 enum {SHIP, BARREL, EXPLOSION, MINE};
@@ -67,6 +69,17 @@ struct GridPoint {
     bool operator!=  (const GridPoint& other) const{
         if(this->x == other.x && this->y == other.y) return false; else return true;
     };
+    
+    GridPoint& operator+=(const GridPoint& other) {
+        this->x += other.x;
+        this->y += other.y;
+        return *this;
+    }
+    
+    friend GridPoint operator+(GridPoint left, const GridPoint& right) {
+        left += right;
+        return left;
+    }
 };
 
 
@@ -283,6 +296,7 @@ private:
     void Output(vector <Order> &orders);
     Order DecisionMainSystem(int shipNum);
     GridPoint FindClosestBarrel(int shipNum);
+    GridPoint FindClosestShootingTarget(int shipNum);
     int NavigationToTarget(Entity ship, GridPoint target);
     GridPoint FindPath(Entity ship, GridPoint target);
     
@@ -349,12 +363,18 @@ void CWorld::UpdateEntity(Entity entity)
 void CWorld::MakeTurn(int myShipCount)
 {
     vector <Order> orders;
-
+    auto T1 = _TIMER;
+    auto T2 = _TIMER;
+    
+    T1 = _TIMER;
     for(auto &ships : myShips){
         orders.push_back(DecisionMainSystem(ships.first));
         orders.back().Message(to_string(ships.first));
     }
 
+    T2 = _TIMER;
+    cerr <<"T "<< T2 - T1 <<"ms"<<endl;
+    
     this->Output(orders);
     
     ClearAll();
@@ -376,6 +396,12 @@ Order CWorld::DecisionMainSystem(int shipNum)
 
     //shipTargetCoords = FindPath(myShips[shipNum], shipTargetCoords);
 
+    if(shipOrder == CMD_WAIT) {
+        shipTargetCoords = FindClosestShootingTarget(shipNum);
+        if(shipTargetCoords.x != -1)
+            shipOrder = CMD_FIRE;
+    }
+
     return Order(shipOrder, shipTargetCoords);
 }
 
@@ -390,6 +416,47 @@ GridPoint CWorld::FindClosestBarrel(int shipNum)
         
         if(Distance(myCoords, barrelCoords) < Distance (myCoords, bestCoords))
             bestCoords = barrelCoords;
+    }
+    
+   if(bestCoords.x == INF){
+        bestCoords.x = -1;
+        bestCoords.y = -1;
+    }
+
+    return bestCoords;
+}
+
+
+GridPoint CWorld::FindClosestShootingTarget(int shipNum)
+{
+    GridPoint myCoords = Nbrs(myShips[shipNum].coords, myShips[shipNum].args[SHIP_ROTATION]);
+    
+    GridPoint bestCoords(INF, INF);
+
+    fprintf(stderr, "Gun %i %i\n", myCoords.x, myCoords.y);
+
+    for(auto currFoeShip : foeShips){
+        GridPoint foeExpectedCoords = currFoeShip.second.coords;
+        
+        for(int turnsPassed = 1; turnsPassed < 6; turnsPassed++) {
+            for(int i = 0; i < currFoeShip.second.args[SHIP_SPEED]; i++){
+                GridPoint chkCoords = Nbrs(foeExpectedCoords, currFoeShip.second.args[SHIP_ROTATION]);
+                if(chkCoords.isInsideMap())
+                    foeExpectedCoords = chkCoords;
+                else
+                    break;
+            }
+            
+            int dist = Distance(myCoords, foeExpectedCoords);
+            int fireDist = 1 + dist/3;
+            
+            fprintf(stderr, "Turn %i Exp %i %i dist %i fire %i\n", turnsPassed, foeExpectedCoords.x, foeExpectedCoords.y, dist, fireDist);
+            
+            if(dist < 10) {
+                if(fireDist <= turnsPassed + 1 && fireDist >= turnsPassed - 1)
+                    bestCoords = foeExpectedCoords;
+            }
+        }
     }
     
    if(bestCoords.x == INF){
@@ -494,7 +561,7 @@ GridPoint CWorld::FindPath(Entity ship, GridPoint target)
     
     path.pop();
     
-    fprintf(stderr, "Go to %i %i", path.front().x, path.front().y);
+    fprintf(stderr, "Go to %i %i\n", path.front().x, path.front().y);
     
     return path.front();
 }
