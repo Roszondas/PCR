@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <stdio.h>
 #include <map>
+#include <queue>
+#include <chrono>
 
 using namespace std;
 
@@ -17,6 +19,7 @@ using namespace std;
 #define WIDTH               23
 #define HEIGHT              21
 
+#define _TIMER chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now().time_since_epoch()).count()
 
 enum {CMD_MOVE, CMD_FIRE, CMD_MINE, CMD_LEFT, CMD_RIGHT, CMD_FASTER, CMD_SLOWER, CMD_WAIT};
 enum {SHIP, BARREL, EXPLOSION, MINE};
@@ -26,6 +29,8 @@ enum {OWNER_FOE, OWNER_ME};
 string entity_name[ENTITY_TYPES_NUM] {"SHIP", "BARREL", "CANNONBALL", "MINE"};
 int entity_type[ENTITY_TYPES_NUM] {SHIP, BARREL, EXPLOSION, MINE};
 
+int DIRECTIONS_EVEN[][2] { { 1, 0 }, { 0, -1 }, { -1, -1 }, { -1, 0 }, { -1, 1 }, { 0, 1 } };
+int DIRECTIONS_ODD[][2]  { { 1, 0 }, { 1, -1 }, { 0, -1 },  { -1, 0 }, { 0, 1 },  { 1, 1 } };
 
 ///////////////////////////////////// GridPoint / CubePoint
 struct CubePoint;
@@ -49,6 +54,32 @@ struct GridPoint {
     }
     
     GridPoint (const CubePoint &cube);
+    
+    bool isInsideMap() {
+        if(x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT) 
+            return true;
+        else
+            return false;
+    }
+    
+    bool operator==  (const GridPoint& other) const{
+        if(this->x == other.x && this->y == other.y) return true; else return false;
+    };
+    
+    bool operator!=  (const GridPoint& other) const{
+        if(this->x == other.x && this->y == other.y) return false; else return true;
+    };
+    
+    GridPoint& operator+=(const GridPoint& other) {
+        this->x += other.x;
+        this->y += other.y;
+        return *this;
+    }
+    
+    friend GridPoint operator+(GridPoint left, const GridPoint& right) {
+        left += right;
+        return left;
+    }
 };
 
 
@@ -103,6 +134,79 @@ struct Entity : public EntityBase
     string type;
     GridPoint coords;
     int args[ARGS_NUM];
+};
+
+
+//////////////////////////////////////////////////////////
+
+struct PointWrapper
+{
+    GridPoint coords;
+    int keyValue;
+    int cost;
+    int orientation;
+    
+    PointWrapper(GridPoint coords, int cost, int orientation, int keyValue){
+        this->coords = coords;
+        this->keyValue = keyValue;
+        this->cost = cost;
+        this->orientation = orientation;
+    }
+    
+    bool operator > (const PointWrapper& other) const{
+        return (this->keyValue > other.keyValue);
+    }
+    
+    bool operator < (const PointWrapper& other) const{
+        return (this->keyValue < other.keyValue);
+    }
+    
+    bool operator==  (const PointWrapper& other) const{
+        if(this->keyValue == other.keyValue) return true; else return false;
+    };
+    
+    bool operator!=  (const PointWrapper& other) const{
+        if(this->keyValue == other.keyValue) return false; else return true;
+    };
+};
+
+
+GridPoint Nbrs(GridPoint coords, int orientation)
+{
+    if (coords.y % 2 == 1) {
+            coords.y += DIRECTIONS_ODD[orientation][1];
+            coords.x += DIRECTIONS_ODD[orientation][0];
+        } else {
+            coords.y += DIRECTIONS_EVEN[orientation][1];
+            coords.x += DIRECTIONS_EVEN[orientation][0];
+        }
+    
+    return coords;
+};
+
+
+int Orient(GridPoint coords, GridPoint Nbr)
+{
+    int orientation;
+    
+    if (coords.y % 2 == 1) {
+        for(int i = 0; i < 6; i++){
+            if(Nbr.y == coords.y + DIRECTIONS_ODD[i][1] && Nbr.x == coords.x + DIRECTIONS_ODD[i][0]){
+                orientation = i;
+                break;
+            }
+        }
+    }
+    else {
+        for(int i = 0; i < 6; i++){
+            if(Nbr.y == coords.y + DIRECTIONS_EVEN[i][1] && Nbr.x == coords.x + DIRECTIONS_EVEN[i][0]){
+                orientation = i;
+                break;
+            }
+        }
+    }
+    
+    return orientation;
 };
 
 
@@ -192,7 +296,9 @@ private:
     void Output(vector <Order> &orders);
     Order DecisionMainSystem(int shipNum);
     GridPoint FindClosestBarrel(int shipNum);
+    GridPoint FindClosestShootingTarget(int shipNum);
     int NavigationToTarget(Entity ship, GridPoint target);
+    GridPoint FindPath(Entity ship, GridPoint target);
     
     void ClearAll();
     
@@ -239,10 +345,11 @@ void CWorld::UpdateEntity(Entity entity)
                 container = &myShips;
             else
                 container = &foeShips;
-  
             break;
+            
         case BARREL:
             container = &barrels;
+            
         default:
             break;
     }
@@ -256,12 +363,18 @@ void CWorld::UpdateEntity(Entity entity)
 void CWorld::MakeTurn(int myShipCount)
 {
     vector <Order> orders;
-
+    auto T1 = _TIMER;
+    auto T2 = _TIMER;
+    
+    T1 = _TIMER;
     for(auto &ships : myShips){
         orders.push_back(DecisionMainSystem(ships.first));
         orders.back().Message(to_string(ships.first));
     }
 
+    T2 = _TIMER;
+    cerr <<"T "<< T2 - T1 <<"ms"<<endl;
+    
     this->Output(orders);
     
     ClearAll();
@@ -270,7 +383,7 @@ void CWorld::MakeTurn(int myShipCount)
 
 Order CWorld::DecisionMainSystem(int shipNum)
 {
-    int shipOrder;
+    int shipOrder = CMD_MOVE;
     
     GridPoint shipTargetCoords = FindClosestBarrel(shipNum);
     
@@ -280,6 +393,14 @@ Order CWorld::DecisionMainSystem(int shipNum)
     }
     
     shipOrder = NavigationToTarget(myShips[shipNum], shipTargetCoords);
+
+    //shipTargetCoords = FindPath(myShips[shipNum], shipTargetCoords);
+
+    if(shipOrder == CMD_WAIT) {
+        shipTargetCoords = FindClosestShootingTarget(shipNum);
+        if(shipTargetCoords.x != -1)
+            shipOrder = CMD_FIRE;
+    }
 
     return Order(shipOrder, shipTargetCoords);
 }
@@ -306,10 +427,143 @@ GridPoint CWorld::FindClosestBarrel(int shipNum)
 }
 
 
+GridPoint CWorld::FindClosestShootingTarget(int shipNum)
+{
+    GridPoint myCoords = Nbrs(myShips[shipNum].coords, myShips[shipNum].args[SHIP_ROTATION]);
+    
+    GridPoint bestCoords(INF, INF);
+
+    fprintf(stderr, "Gun %i %i\n", myCoords.x, myCoords.y);
+
+    for(auto currFoeShip : foeShips){
+        GridPoint foeExpectedCoords = currFoeShip.second.coords;
+        
+        for(int turnsPassed = 1; turnsPassed < 6; turnsPassed++) {
+            for(int i = 0; i < currFoeShip.second.args[SHIP_SPEED]; i++){
+                GridPoint chkCoords = Nbrs(foeExpectedCoords, currFoeShip.second.args[SHIP_ROTATION]);
+                if(chkCoords.isInsideMap())
+                    foeExpectedCoords = chkCoords;
+                else
+                    break;
+            }
+            
+            int dist = Distance(myCoords, foeExpectedCoords);
+            int fireDist = 1 + dist/3;
+            
+            fprintf(stderr, "Turn %i Exp %i %i dist %i fire %i\n", turnsPassed, foeExpectedCoords.x, foeExpectedCoords.y, dist, fireDist);
+            
+            if(dist < 10) {
+                if(fireDist <= turnsPassed + 1 && fireDist >= turnsPassed - 1)
+                    bestCoords = foeExpectedCoords;
+            }
+        }
+    }
+    
+   if(bestCoords.x == INF){
+        bestCoords.x = -1;
+        bestCoords.y = -1;
+    }
+
+    return bestCoords;
+}
+
+
 int CWorld::NavigationToTarget(Entity ship, GridPoint target)
 {
+    int cmd = CMD_MOVE;
+    GridPoint sideCoords = FindPath(ship, target);
     
-    return CMD_MOVE;
+    GridPoint newCoords = ship.coords;
+    for(int i = 0; i < ship.args[SHIP_SPEED]; i++){
+        GridPoint chkCoords = Nbrs(newCoords, ship.args[SHIP_ROTATION]);
+        if(chkCoords.isInsideMap())
+            newCoords = chkCoords;
+        else
+            break;
+    }
+    
+    int destOrientation = Orient(newCoords, sideCoords);
+    
+    if(destOrientation == ship.args[SHIP_ROTATION]){
+        if(ship.args[SHIP_SPEED])
+            cmd = CMD_WAIT;
+        else
+            cmd = CMD_FASTER;
+    }
+    else {
+        int rotationLeft = 0;
+        for(int i = ship.args[SHIP_ROTATION]; i%6 != destOrientation%6; i++){
+            rotationLeft++;
+        }
+        
+        if(rotationLeft > 3)
+            cmd = CMD_RIGHT;
+        else
+            cmd = CMD_LEFT;
+            
+    }
+        
+    return cmd;
+}
+
+
+
+
+GridPoint CWorld::FindPath(Entity ship, GridPoint target)
+{
+    GridPoint newCoords = ship.coords;
+    int orientation = ship.args[SHIP_ROTATION];
+    
+    fprintf(stderr, "From %i %i to %i %i\n\n", newCoords.x, newCoords.y, target.x, target.y);
+    
+    for(int i = 0; i < ship.args[SHIP_SPEED]; i++){
+        GridPoint chkCoords = Nbrs(newCoords, orientation);
+        if(chkCoords.isInsideMap())
+            newCoords = chkCoords;
+        else
+            break;
+    }
+    
+    priority_queue <PointWrapper> pQueue;
+    queue <GridPoint> path;
+    
+    pQueue.push(PointWrapper(newCoords, 0, orientation, 0));
+    
+    while(!pQueue.empty()){
+        PointWrapper curPoint = pQueue.top();
+        path.push(curPoint.coords);
+        pQueue.pop();
+        
+        //fprintf(stderr, "Check curPoint %i %i - %i\n", curPoint.coords.x, curPoint.coords.y, curPoint.keyValue);
+        
+        if(!curPoint.coords.isInsideMap()) continue;
+        if(curPoint.coords == target) break;
+                
+        for(int i = 0; i < 6; i++){
+            
+            int newCost = curPoint.cost + 2;
+            if(i==curPoint.orientation)
+                newCost--;
+            
+            GridPoint nbrCoords = Nbrs(curPoint.coords, i);
+            if(!nbrCoords.isInsideMap()) continue;
+            
+            int priorityKey = (Distance(ship.coords, target) - Distance(nbrCoords, target))*2 - newCost;
+            
+            if(nbrCoords == target) priorityKey+=5;
+            
+            //fprintf(stderr, "nbr %i %i pri %i\n", nbrCoords.x, nbrCoords.y, priorityKey);
+            
+            pQueue.push(PointWrapper(nbrCoords, newCost, i, priorityKey));
+        }
+
+    }
+    
+    path.pop();
+    
+    fprintf(stderr, "Go to %i %i\n", path.front().x, path.front().y);
+    
+    return path.front();
 }
 
 
