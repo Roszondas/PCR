@@ -15,19 +15,19 @@ using namespace std;
 #define INF_NEG    -999999
 
 #define ARGS_NUM            4
-#define ENTITY_TYPES_NUM    4
+#define ENTITY_TYPES_NUM    5
 #define WIDTH               23
 #define HEIGHT              21
 
 #define _TIMER chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now().time_since_epoch()).count()
 
 enum {CMD_MOVE, CMD_FIRE, CMD_MINE, CMD_LEFT, CMD_RIGHT, CMD_FASTER, CMD_SLOWER, CMD_WAIT};
-enum {SHIP, BARREL, EXPLOSION, MINE};
+enum {SHIP, BARREL, EXPLOSION, MINE, SEA};
 enum {SHIP_ROTATION, SHIP_SPEED, SHIP_RUM, SHIP_OWNER};
 enum {OWNER_FOE, OWNER_ME};
 
-string entity_name[ENTITY_TYPES_NUM] {"SHIP", "BARREL", "CANNONBALL", "MINE"};
-int entity_type[ENTITY_TYPES_NUM] {SHIP, BARREL, EXPLOSION, MINE};
+string entity_name[ENTITY_TYPES_NUM] {"SHIP", "BARREL", "CANNONBALL", "MINE", "SEA"};
+int entity_type[ENTITY_TYPES_NUM] {SHIP, BARREL, EXPLOSION, MINE, SEA};
 
 int DIRECTIONS_EVEN[6][2] { { 1, 0 }, { 0, -1 }, { -1, -1 }, { -1, 0 }, { -1, 1 }, { 0, 1 } };
 int DIRECTIONS_ODD[6][2]  { { 1, 0 }, { 1, -1 }, { 0, -1 },  { -1, 0 }, { 0, 1 },  { 1, 1 } };
@@ -123,19 +123,83 @@ GridPoint::GridPoint (const CubePoint &cube)
 
 
 ///////////////////////////////////// Entity
-struct EntityBase
-{
-    bool explosion = false;
-    int args[2];
-};
-
-struct Entity : public EntityBase
+struct Entity
 {
     int id;
     string type;
     GridPoint coords;
     int args[ARGS_NUM];
 };
+
+
+
+///////////////////////////////////// Cell
+struct Cell
+{
+    int index;
+    Entity *content;
+    int explode = -1;
+    
+    Cell(int index, Entity *content) {
+        this->index = index;
+        this->content = content;
+    }
+};
+
+
+
+///////////////////////////////////// CBoard
+class CBoard
+{
+private:
+    vector <Cell> grid;
+    Entity voidSea;
+    
+    map <int, Entity> myShips;
+    map <int, Entity> foeShips;
+    map <int, Entity> barrels;
+    
+    void ClearAll();
+    
+public:
+    CBoard();
+    int CheckCell(GridPoint point);
+};
+
+
+CBoard::CBoard()
+{
+    voidSea.type = "SEA";
+    
+    for(int i = 0; i < HEIGHT*WIDTH; i++)
+        grid.push_back(Cell(i, &voidSea));
+}
+
+
+int CBoard::CheckCell(GridPoint point)
+{
+    int index = point.x + WIDTH*point.y;
+    int ret = -1;
+    
+    if(grid[index].explode > -1) return EXPLOSION;
+    
+    for(int currType = 0; currType < ENTITY_TYPES_NUM; currType++) {
+        if(grid[index].content->type == entity_name[currType]){
+            ret = currType;
+            break;
+        }
+    }
+    
+    return ret;
+}
+
+
+void CBoard::ClearAll()
+{
+    myShips.clear();
+    foeShips.clear();
+    barrels.clear();
+}
 
 
 ///////////////////////////////////// PointWrapper
@@ -387,7 +451,7 @@ void CWorld::MakeTurn(int myShipCount)
         orders.push_back(DecisionMainSystem(ships.first));
         orders.back().Message(to_string(ships.first));
     }
-
+    
     auto T2 = _TIMER;
     cerr <<"T "<< T2 - T1 <<"ms"<<endl;
     
@@ -450,12 +514,9 @@ GridPoint CWorld::FindClosestShootingTarget(int shipNum)
     GridPoint bestCoords(INF, INF);
 
     for(auto currFoeShip : foeShips){
-        GridPoint foeExpectedCoords = currFoeShip.second.coords;
-        
         for(int turnsPassed = 0; turnsPassed < 6; turnsPassed++) {
-            
-            foeExpectedCoords = ApplySpeed(currFoeShip.second, turnsPassed);
 
+            GridPoint foeExpectedCoords = ApplySpeed(currFoeShip.second, turnsPassed);
             float dist = Distance(myCoords, foeExpectedCoords);
             int fireDist = 1 + round(dist/3);
             
@@ -476,7 +537,7 @@ GridPoint CWorld::FindClosestShootingTarget(int shipNum)
         }
     }
     
-   if(bestCoords.x == INF){
+    if(bestCoords.x == INF){
         bestCoords.x = -1;
         bestCoords.y = -1;
     }
@@ -536,6 +597,8 @@ GridPoint CWorld::FindPath(Entity ship, GridPoint target)
     priority_queue <PointWrapper> pQueue;
     queue <GridPoint> path;
     
+    vector <PointWrapper> store;
+    
     pQueue.push(PointWrapper(newCoords, 0, ship.args[SHIP_ROTATION], 0));
     
     while(!pQueue.empty()){
@@ -563,6 +626,7 @@ GridPoint CWorld::FindPath(Entity ship, GridPoint target)
             
             //fprintf(stderr, "nbr %i %i pri %i\n", nbrCoords.x, nbrCoords.y, priorityKey);
             
+            //store.push_back(
             pQueue.push(PointWrapper(nbrCoords, newCost, i, priorityKey));
         }
 
