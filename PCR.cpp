@@ -272,8 +272,22 @@ public:
     static int Distance(GridPoint a, GridPoint b);
     static int DirectionByNeighbor(GridPoint coords, GridPoint Nbr);
     static GridPoint NeighborByDirection(GridPoint coords, int direction);
+    static GridPoint ApplySpeed(Entity ship, int turns);
 };
 
+
+int CWorld::Distance(CubePoint a, CubePoint b)
+{
+    return (abs(a.x - b.x) + abs(a.y - b.y) + abs(a.z - b.z)) / 2;
+}
+
+
+int CWorld::Distance(GridPoint a, GridPoint b)
+{
+    CubePoint ca = a;
+    CubePoint cb = b;
+    return Distance(ca, cb);
+}
 
 
 int CWorld::DirectionByNeighbor(GridPoint coords, GridPoint Nbr)
@@ -313,17 +327,19 @@ GridPoint CWorld::NeighborByDirection(GridPoint coords, int direction)
 };
 
 
-int CWorld::Distance(CubePoint a, CubePoint b)
+GridPoint CWorld::ApplySpeed(Entity ship, int turns)
 {
-    return (abs(a.x - b.x) + abs(a.y - b.y) + abs(a.z - b.z)) / 2;
-}
-
-
-int CWorld::Distance(GridPoint a, GridPoint b)
-{
-    CubePoint ca = a;
-    CubePoint cb = b;
-    return Distance(ca, cb);
+    if(ship.type != "SHIP") return ship.coords;
+    
+    for(int i = 0; i < (turns + 1) * ship.args[SHIP_SPEED]; i++){
+        GridPoint chkCoords = NeighborByDirection(ship.coords, ship.args[SHIP_ROTATION]);
+        if(chkCoords.isInsideMap())
+            ship.coords = chkCoords;
+        else
+            break;
+    }
+    
+    return ship.coords;
 }
 
 
@@ -429,26 +445,33 @@ GridPoint CWorld::FindClosestShootingTarget(int shipNum)
 {
     GridPoint myCoords = NeighborByDirection(myShips[shipNum].coords, myShips[shipNum].args[SHIP_ROTATION]);
     
+    int estimate;
+    int bestEstimate = INF;
     GridPoint bestCoords(INF, INF);
 
     for(auto currFoeShip : foeShips){
         GridPoint foeExpectedCoords = currFoeShip.second.coords;
         
-        for(int turnsPassed = 1; turnsPassed < 6; turnsPassed++) {
-            for(int i = 0; i < currFoeShip.second.args[SHIP_SPEED]; i++){
-                GridPoint chkCoords = NeighborByDirection(foeExpectedCoords, currFoeShip.second.args[SHIP_ROTATION]);
-                if(chkCoords.isInsideMap())
-                    foeExpectedCoords = chkCoords;
+        for(int turnsPassed = 0; turnsPassed < 6; turnsPassed++) {
+            
+            foeExpectedCoords = ApplySpeed(currFoeShip.second, turnsPassed);
+
+            float dist = Distance(myCoords, foeExpectedCoords);
+            int fireDist = 1 + round(dist/3);
+            
+            if(dist <= 10) {
+                if(dist < 1)
+                    estimate = INF;
                 else
-                    break;
-            }
-            
-            int dist = Distance(myCoords, foeExpectedCoords);
-            int fireDist = 1 + dist/3;
-            
-            if(dist < 10) {
-                if(fireDist <= turnsPassed + 1 && fireDist >= turnsPassed - 1)
+                    estimate = abs(turnsPassed - fireDist)*dist;
+
+                // fprintf(stderr,"%i %i\nt %i f %i d %f est %i best %i\n", foeExpectedCoords.x, foeExpectedCoords.y, 
+                //         turnsPassed, fireDist, dist, estimate, bestEstimate);
+
+                if(estimate < bestEstimate) {
+                    bestEstimate = estimate;
                     bestCoords = foeExpectedCoords;
+                }
             }
         }
     }
@@ -467,15 +490,8 @@ int CWorld::NavigationToTarget(Entity ship, GridPoint target)
     int cmd = CMD_MOVE;
     GridPoint sideCoords = FindPath(ship, target);
     
-    GridPoint newCoords = ship.coords;
-    for(int i = 0; i < ship.args[SHIP_SPEED]; i++){
-        GridPoint chkCoords = NeighborByDirection(newCoords, ship.args[SHIP_ROTATION]);
-        if(chkCoords.isInsideMap())
-            newCoords = chkCoords;
-        else
-            break;
-    }
-    
+    GridPoint newCoords = ApplySpeed(ship, 0);
+        
     int destOrientation = DirectionByNeighbor(newCoords, sideCoords);
     
     if(destOrientation == ship.args[SHIP_ROTATION]){
@@ -513,23 +529,14 @@ int CWorld::NavigationToTarget(Entity ship, GridPoint target)
 
 GridPoint CWorld::FindPath(Entity ship, GridPoint target)
 {
-    GridPoint newCoords = ship.coords;
-    int direction = ship.args[SHIP_ROTATION];
+    //fprintf(stderr, "From %i %i to %i %i\n\n", ship.coords.x, ship.coords.y, target.x, target.y);
     
-    //fprintf(stderr, "From %i %i to %i %i\n\n", newCoords.x, newCoords.y, target.x, target.y);
-    
-    for(int i = 0; i < ship.args[SHIP_SPEED]; i++){
-        GridPoint chkCoords = NeighborByDirection(newCoords, direction);
-        if(chkCoords.isInsideMap())
-            newCoords = chkCoords;
-        else
-            break;
-    }
-    
+    GridPoint newCoords = ApplySpeed(ship, 0);
+
     priority_queue <PointWrapper> pQueue;
     queue <GridPoint> path;
     
-    pQueue.push(PointWrapper(newCoords, 0, direction, 0));
+    pQueue.push(PointWrapper(newCoords, 0, ship.args[SHIP_ROTATION], 0));
     
     while(!pQueue.empty()){
         PointWrapper curPoint = pQueue.top();
