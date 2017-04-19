@@ -4,15 +4,15 @@ This is a code for AI-agents in a "Coders of the Caribbean" game.
 
 CODERS OF THE CARIBBEAN
 
-Game page:
+Game page:<br>
 https://www.codingame.com/contests/coders-of-the-caribbean
 
-Some gameplay examples:
-https://www.codingame.com/replay/209169597
-https://www.codingame.com/replay/209158698
-https://www.codingame.com/replay/209131096
-https://www.codingame.com/replay/209111281
-https://www.codingame.com/replay/208944613
+Some gameplay examples:<br>
+https://www.codingame.com/replay/209169597<br>
+https://www.codingame.com/replay/209158698<br>
+https://www.codingame.com/replay/209131096<br>
+https://www.codingame.com/replay/209111281<br>
+https://www.codingame.com/replay/208944613<br>
 
 
 The Goal
@@ -110,7 +110,7 @@ The PORT and STARBOARD commands will change the rotation of your ship (on the ne
 
 Source code:
 
-The source code of the game is available on our Github at this address: https://github.com/CodinGame/coders-of-the-caribbean/
+The source code of the game is available on our Github at this address: https://github.com/CodinGame/coders-of-the-caribbean/<br><br><br>
 
 
 
@@ -118,46 +118,49 @@ The source code of the game is available on our Github at this address: https://
 
 Game Input
 
-Input for one game turn
-Line 1: myShipCount, an integer for the number of ships you control.
-Line 2 : entityCount, an integer for the number of entities on the grid.
-The next entityCount lines: an integer entityId, a string entityType, two integers x and y for the coordinates of the entity, then 4 integers arg1, arg2, arg3 and arg4.
+Input for one game turn<br>
+Line 1: myShipCount, an integer for the number of ships you control.<br>
+Line 2 : entityCount, an integer for the number of entities on the grid.<br>
+The next entityCount lines: an integer entityId, a string entityType, two integers x and y for the coordinates of the entity, then 4 integers arg1, arg2, arg3 and arg4.<br>
 
-If entityType equals SHIP, then the integers represent:
-arg1: the ship's rotation orientation (between 0 and 5)
-arg2: the ship's speed (between 0 and 2)
-arg3: the ship's stock of rum units
+If entityType equals SHIP, then the integers represent:<br>
+arg1: the ship's rotation orientation (between 0 and 5)<br>
+arg2: the ship's speed (between 0 and 2)<br>
+arg3: the ship's stock of rum units<br>
 arg4: 1 if the ship is controlled by you, 0 otherwise
-If entityType equals BARREL, then the integers represent:
+
+If entityType equals BARREL, then the integers represent:<br>
 arg1: the amount of rum in this barrel
-If entityType equals CANNONBALL, the x and y represent the target coordinates and the integers represent:
-arg1: the entityId of the ship that fired this cannon ball
+
+If entityType equals CANNONBALL, the x and y represent the target coordinates and the integers represent:<br>
+arg1: the entityId of the ship that fired this cannon ball<br>
 arg2: the number of turns before impact (1 means the cannon ball will land at the end of the current turn)
-If entityType equals MINE, then the integers have no meaning.
+
+If entityType equals MINE, then the integers have no meaning.<br><br><br>
 
 
 
 
-Output for one game turn
-For each one of your ships, one of the following commands:
-MOVE x y: move automatically towards the specified coordinate.
-FIRE x y: launch a cannon ball to the specified coordinate.
-MINE: place a mine on the cell behind the ship.
-PORT: turn the ship left.
-STARBOARD: turn the ship right.
-FASTER: speed the ship up.
-SLOWER: speed the ship down.
-WAIT: perform no action.
-The commands must be given in the same order as how the ships were given as input (the entityId are in ascending order).
+Output for one game turn<br>
+For each one of your ships, one of the following commands:<br>
+MOVE x y: move automatically towards the specified coordinate.<br>
+FIRE x y: launch a cannon ball to the specified coordinate.<br>
+MINE: place a mine on the cell behind the ship.<br>
+PORT: turn the ship left.<br>
+STARBOARD: turn the ship right.<br>
+FASTER: speed the ship up.<br>
+SLOWER: speed the ship down.<br>
+WAIT: perform no action.<br>
+The commands must be given in the same order as how the ships were given as input (the entityId are in ascending order).<br><br><br>
 
 
 
-Constraints
-1 ≤ myShipCount ≤ 3
-10 ≤ rumBarrelCount ≤ 26
-5 ≤ initialMineCount ≤ 10
-0 ≤ x ≤ 22
-0 ≤ y ≤ 20
-0 ≤ shipSpeed ≤ 2
-Response time for first turn ≤ 1000ms
+Constraints<br>
+1 ≤ myShipCount ≤ 3<br>
+10 ≤ rumBarrelCount ≤ 26<br>
+5 ≤ initialMineCount ≤ 10<br>
+0 ≤ x ≤ 22<br>
+0 ≤ y ≤ 20<br>
+0 ≤ shipSpeed ≤ 2<br>
+Response time for first turn ≤ 1000ms<br>
 Response time for one turn ≤ 50ms
