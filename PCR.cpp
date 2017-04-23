@@ -350,6 +350,8 @@ private:
     map <int, Entity> fullEntityMap;
     
     int myShipCount = 1;
+    int fireReloading[6] {0,0,0,0,0,0};
+    int mineReloading[6] {0,0,0,0,0,0};
     
     void Output(vector <Order> &orders);
     Order DecisionMainSystem(int shipNum);
@@ -527,6 +529,8 @@ void CWorld::MakeTurn(int myShipCount)
     auto T1 = _TIMER;
     
     for(auto &ships : myShips){
+        if( fireReloading[ships.first] > 0) fireReloading[ships.first]--;
+        if( mineReloading[ships.first] > 0) mineReloading[ships.first]--;
         orders.push_back(DecisionMainSystem(ships.first));
         orders.back().Message(to_string(ships.first));
     }
@@ -557,6 +561,18 @@ Order CWorld::DecisionMainSystem(int shipNum)
         }
     }
     
+    int closestDist = INF;
+    Entity *closestEnemy;
+    for(auto &currFoeShip : foeShips){
+        GridPoint foeExpectedCoords = ApplySpeed(currFoeShip.second, 0);
+        int dist = Distance(myShips[shipNum].coords, foeExpectedCoords);
+        
+        if(dist < closestDist) {
+            closestDist = dist;
+            closestEnemy = &currFoeShip.second;
+        }
+    }
+    
     if(shipTargetCoords.x == -1){
         int dist;
         if(shipNum == bestShip.id) 
@@ -567,6 +583,14 @@ Order CWorld::DecisionMainSystem(int shipNum)
         shipTargetCoords = FindSpot(myShips[shipNum], dist);
         // shipTargetCoords.x = rand() % WIDTH;
         // shipTargetCoords.y = rand() % HEIGHT;
+        
+        if(shipNum != bestShip.id && Distance(myShips[shipNum].coords, bestShip.coords) < 5
+            && Distance(myShips[shipNum].coords, closestEnemy->coords) > 10
+            && myShips[shipNum].args[SHIP_RUM] <= 50) {
+            shipTargetCoords = ApplySpeed(myShips[shipNum], 0);
+            shipOrder = CMD_FIRE;
+            return Order(shipOrder, shipTargetCoords);
+            }
     }
     
     
@@ -581,10 +605,18 @@ Order CWorld::DecisionMainSystem(int shipNum)
     
     if(shipOrder == CMD_WAIT) {
         shipTargetCoords = FindClosestShootingTarget(shipNum);
-        if(shipTargetCoords.x != -1)
-            shipOrder = CMD_FIRE;
+        if(!fireReloading[shipNum] && shipTargetCoords.x != -1){
+                shipOrder = CMD_FIRE;
+        }
+        else if(!mineReloading[shipNum]){
+            if(Distance(myShips[shipNum].coords, closestEnemy->coords) < 6)
+                shipOrder = CMD_MINE;
+        }
     }
 
+    if(shipOrder == CMD_FIRE && !fireReloading[shipNum]) fireReloading[shipNum] = 2;
+    if(shipOrder == CMD_MINE && !mineReloading[shipNum]) mineReloading[shipNum] = 5;
+    
     return Order(shipOrder, shipTargetCoords);
 }
 
@@ -987,7 +1019,7 @@ int CWorld::FindPathCmd(Entity& ship, GridPoint target)
         //if(curPoint.coords == target || fCoords == target || bCoords == target) break;
         
         int chkRum = abs( maxRum - (ship.args[SHIP_RUM] - curPoint.depth) + barrel.args[0]);
-        cerr <<"Chkrum = "<<chkRum<<endl;
+        //cerr <<"Chkrum = "<<chkRum<<endl;
         
         //if(curPoint.depth > 3 && store.front().cmd == MOV_WAIT && curPoint.cmd == MOV_WAIT) return MOV_WAIT;
         
