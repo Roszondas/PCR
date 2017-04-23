@@ -17,9 +17,12 @@ using namespace std;
 #define INF_NEG    -999999
 
 #define ARGS_NUM            4
-#define ENTITY_TYPES_NUM    5
+#define ENTITY_TYPES_NUM    6
 #define WIDTH               23
 #define HEIGHT              21
+
+#define NOSE_OFSET          6
+#define BACK_OFSET          7
 
 #define _TIMER chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now().time_since_epoch()).count()
 
@@ -31,7 +34,7 @@ enum {BOMB_OWNER, BOMB_TIMER};
 
 
 
-string entity_name[ENTITY_TYPES_NUM] {"SHIP", "BARREL", "CANNONBALL", "MINE", "SEA"};
+string entity_name[ENTITY_TYPES_NUM] {"SHIP", "BARREL", "CANNONBALL", "MINE", "SEA", "PART"};
 int entity_type[ENTITY_TYPES_NUM] {SHIP, BARREL, EXPLOSION, MINE, SEA};
 
 int DIRECTIONS_EVEN[6][2] { { 1, 0 }, { 0, -1 }, { -1, -1 }, { -1, 0 }, { -1, 1 }, { 0, 1 } };
@@ -136,6 +139,14 @@ struct Entity
     string type;
     GridPoint coords;
     int args[ARGS_NUM];
+    
+    Entity() {};
+    
+    Entity(int id, string type, GridPoint coords){
+        this->id = id;
+        this->type = type;
+        this->coords = coords;
+    }
 };
 
 
@@ -146,6 +157,9 @@ struct Cell
     int index;
     Entity *content;
     int explode = -1;
+    int visited = 0;
+    int direction = -10;
+    int speed = -10;
     
     Cell(int index, Entity *content) {
         this->index = index;
@@ -158,7 +172,7 @@ struct Cell
 ///////////////////////////////////// CBoard
 class CBoard
 {
-private:
+public:
     vector <Cell> grid;
     Entity voidSea;
     
@@ -168,7 +182,7 @@ private:
     
     void ClearAll();
     
-public:
+//public:
     CBoard();
     int CheckCell(GridPoint point);
 };
@@ -330,6 +344,7 @@ private:
     map <int, Entity> barrels;
     map <int, Entity> explosions;
     
+    map <int, Entity> parts;
     map <int, Entity> fullEntityMap;
     
     void Output(vector <Order> &orders);
@@ -343,6 +358,8 @@ private:
     int ChkMov(GridPoint coords, int dir, int depth);
     
     int UpdateCost(GridPoint coords, int depth);
+    
+    GridPoint FindSpot(Entity ship);
     
     void ClearAll();
     
@@ -455,12 +472,27 @@ void CWorld::UpdateEntity(Entity entity)
     
     switch(type){
         case SHIP:
-            if(entity.args[SHIP_OWNER] == OWNER_ME)
-                container = &myShips;
-            else
-                container = &foeShips;
-            break;
-            
+            {
+                parts.insert(pair<int, Entity> (entity.id, entity));
+                GridPoint fCoords = NeighborByDirection(entity.coords, entity.args[SHIP_ROTATION]);
+                GridPoint bCoords = NeighborByDirection(entity.coords, (entity.args[SHIP_ROTATION] + 3)%6);
+                string t = "PARTS";
+                if(fCoords.isInsideMap()){
+                    Entity front(entity.id + NOSE_OFSET, t, fCoords);
+                    parts.insert(pair<int, Entity> (front.id, front));
+                }
+                if(bCoords.isInsideMap()){
+                    Entity back(entity.id + BACK_OFSET, t, bCoords);
+                    parts.insert(pair<int, Entity> (back.id, back));
+                }
+                
+                if(entity.args[SHIP_OWNER] == OWNER_ME)
+                    container = &myShips;
+                else
+                    container = &foeShips;
+                    
+                break;
+            }
         case BARREL:
             container = &barrels;
             break;
@@ -512,8 +544,9 @@ Order CWorld::DecisionMainSystem(int shipNum)
     //fprintf(stderr, "Target %i %i\n", shipTargetCoords.x, shipTargetCoords.y);
     
     if(shipTargetCoords.x == -1){
-        shipTargetCoords.x = rand() % WIDTH;
-        shipTargetCoords.y = rand() % HEIGHT;
+        shipTargetCoords = FindSpot(myShips[shipNum]);
+        // shipTargetCoords.x = rand() % WIDTH;
+        // shipTargetCoords.y = rand() % HEIGHT;
     }
     
     
@@ -529,6 +562,90 @@ Order CWorld::DecisionMainSystem(int shipNum)
     }
 
     return Order(shipOrder, shipTargetCoords);
+}
+
+
+
+GridPoint CWorld::FindSpot(Entity ship)
+{
+    int desiredDist = 6;
+    int movePrice = 0;
+    GridPoint myCoords = ship.coords;
+    int koef  =1;
+    
+    int estimate;
+    int closestDist = INF;
+    GridPoint bestCoords(INF, INF);
+    Entity *closestEnemy;
+    
+    for(auto &currFoeShip : foeShips){
+        GridPoint foeExpectedCoords = ApplySpeed(currFoeShip.second, 0);
+        int dist = Distance(myCoords, foeExpectedCoords);
+        
+        if(dist < closestDist) {
+            closestDist = dist;
+            closestEnemy = &currFoeShip.second;
+        }
+    }
+    
+    CBoard Board;
+    GridPoint newCoords = myCoords;
+    priority_queue <PointWrapper> pQueue;
+    list <PointWrapper> store;
+    
+    
+    cerr << "Dist = " << Distance(closestEnemy->coords, myCoords) << endl;
+    if(Distance(closestEnemy->coords, myCoords) > desiredDist)
+        koef = -1;
+    else
+        koef = 1;
+    
+    pQueue.push(PointWrapper(newCoords, 0, ship.args[SHIP_ROTATION], 0, nullptr));
+    
+    while(!pQueue.empty()){
+        PointWrapper curPoint = pQueue.top();
+        store.push_back(curPoint);
+        PointWrapper *parent = &store.back();
+        pQueue.pop();
+        
+        //fprintf(stderr, "Check curPoint %i %i - %i\n", curPoint.coords.x, curPoint.coords.y, curPoint.keyValue);
+        
+        bestCoords.x = curPoint.coords.x;
+        bestCoords.y = curPoint.coords.y;
+        //fprintf(stderr, "Check curPoint %i %i - %i\n", curPoint.coords.x, curPoint.coords.y, curPoint.keyValue);
+        
+        if(!curPoint.coords.isInsideMap()) continue;
+        //if(koef*Distance(closestEnemy->coords, curPoint.coords) >= koef*desiredDist) break;
+                
+        for(int i = 0; i < 6; i++){
+            int newCost = curPoint.cost + movePrice;
+            if(i==curPoint.direction)
+                newCost--;
+    
+            GridPoint nbrCoords = NeighborByDirection(curPoint.coords, i);
+            if(!nbrCoords.isInsideMap()) continue;
+
+            int priorityKey = -Distance(closestEnemy->coords, nbrCoords);
+            
+            if(Board.grid[nbrCoords.x + nbrCoords.y*WIDTH].visited) continue;
+            
+            pQueue.push(PointWrapper(nbrCoords, newCost, i, priorityKey, parent ));
+            
+            Board.grid[nbrCoords.x + nbrCoords.y*WIDTH].visited = 1;
+            
+            //fprintf(stderr, "nbr %i %i dist %i pri %i\n", nbrCoords.x, nbrCoords.y, (Distance(closestEnemy->coords, nbrCoords)), priorityKey);
+            
+        }
+
+    }
+    
+    
+    if(bestCoords.x == INF){
+        bestCoords.x = -1;
+        bestCoords.y = -1;
+    }
+
+    return bestCoords;
 }
 
 
@@ -808,6 +925,10 @@ int CWorld::FindPathCmd(Entity& ship, GridPoint target)
     int initDepth = 0;
     CmdWrapper *parent = nullptr;
     
+    CBoard Board;
+    
+    int counter = 0;
+    
     pQueue.push(CmdWrapper(CMD_WAIT, newCoords, initCost, initDir, initSpeed, initValue, parent, initDepth));
     
     //enum {CMD_MOVE, CMD_FIRE, CMD_MINE, CMD_LEFT, CMD_RIGHT, CMD_FASTER, CMD_SLOWER, CMD_WAIT};
@@ -820,10 +941,11 @@ int CWorld::FindPathCmd(Entity& ship, GridPoint target)
         
         int inAngle = min (abs(curPoint.direction - curPoint.coords.Angle(target)), abs(curPoint.direction + 6 - curPoint.coords.Angle(target)));    
 
-
+        counter++;
+        
         //fprintf(stderr, "Check curPoint %i %i - %i\n", curPoint.coords.x, curPoint.coords.y, curPoint.keyValue);
         fprintf(stderr, "%s\n", mov_str[curPoint.cmd].c_str());
-        fprintf(stderr, "Check curPoint %i %i dir %i speed %i angle %i pri %i\n", curPoint.coords.x, curPoint.coords.y, curPoint.direction, curPoint.speed, inAngle, curPoint.keyValue);
+        fprintf(stderr, "Check curPoint %i %i dir %i speed %i angle %i pri %i depth %i\n", curPoint.coords.x, curPoint.coords.y, curPoint.direction, curPoint.speed, inAngle, curPoint.keyValue, curPoint.depth);
         
         if(!curPoint.coords.isInsideMap()) continue;
         
@@ -832,6 +954,10 @@ int CWorld::FindPathCmd(Entity& ship, GridPoint target)
         
         if(curPoint.coords == target || fCoords == target || bCoords == target) break;
         
+        
+        //if(curPoint.depth > 3 && store.front().cmd == MOV_WAIT && curPoint.cmd == MOV_WAIT) return MOV_WAIT;
+        
+        if(counter >= 120) return MOV_WAIT;
         
         for(int cmd = 0; cmd < 5; cmd++){
             int newCost = curPoint.cost + 2;
@@ -862,7 +988,20 @@ int CWorld::FindPathCmd(Entity& ship, GridPoint target)
                     ;
             }
             
-            nextCoords = ApplySpeed(curPoint.coords, curPoint.direction, speed, 0);
+            GridPoint chkCoords;
+            nextCoords = curPoint.coords;
+            for(int i = 0; i < speed; i++){
+                chkCoords = ApplySpeed(nextCoords, curPoint.direction, 1, 0);
+                if(!nextCoords.isInsideMap() ) {
+                    speed = 0;
+                    break;
+                }
+                else
+                    nextCoords = chkCoords;
+            }
+
+                    
+            newCost += ChkMov(nextCoords, curPoint.direction, curPoint.depth + 1);
             newCost += ChkMov(nextCoords, direction, curPoint.depth + 1);
             
             int angle = min (abs(direction - nextCoords.Angle(target)), abs(direction + 6 - nextCoords.Angle(target)));
@@ -870,7 +1009,18 @@ int CWorld::FindPathCmd(Entity& ship, GridPoint target)
             if(nextCoords == target) priorityKey+=5;
             
             fprintf(stderr, "cmd %s coord %i %i dir %i speed %i angle %i pri %i\n", mov_str[cmd].c_str(), nextCoords.x, nextCoords.y, direction, speed, angle, priorityKey);
+            if(Board.grid[nextCoords.x + nextCoords.y*WIDTH].visited &&
+                Board.grid[nextCoords.x + nextCoords.y*WIDTH].direction == direction &&
+                Board.grid[nextCoords.x + nextCoords.y*WIDTH].speed == speed){
+                    cerr << "Visited\n";
+                    continue;
+            }
+            
             pQueue.push(CmdWrapper(cmd, nextCoords, newCost, direction, speed, priorityKey, parent, parent->depth + 1));
+            
+            Board.grid[nextCoords.x + nextCoords.y*WIDTH].visited = 1;
+            Board.grid[nextCoords.x + nextCoords.y*WIDTH].direction = direction;
+            Board.grid[nextCoords.x + nextCoords.y*WIDTH].speed = speed;
         }
           
     }
@@ -931,6 +1081,15 @@ int CWorld::UpdateCost(GridPoint coords, int depth)
                 cost+=50;
         }
     }
+    
+    for(auto ship : parts){
+        if(ship.second.id == currentShip->id || ship.second.id == currentShip->id + BACK_OFSET || ship.second.id == currentShip->id + NOSE_OFSET)
+            continue;
+            
+        if(ship.second.coords.x == coords.x && ship.second.coords.y == coords.y){
+            cost+=50;
+        }
+    }
         
     return cost;
 }
@@ -951,7 +1110,7 @@ void CWorld::ClearAll()
     foeShips.clear();
     barrels.clear();
     explosions.clear();
-    
+    parts.clear();
     fullEntityMap.clear();
 }
 
